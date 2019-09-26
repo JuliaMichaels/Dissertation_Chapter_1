@@ -1,0 +1,481 @@
+---
+title: "R Notebook"
+date: Mar 28, 2018
+output:
+  html_document:
+    theme: journal
+---
+
+```{r "setup", include=FALSE}
+require("knitr")
+#opts_knit$set(root.dir = "C:/Users/evan/Box Sync/Eviner lab shared/Evan/Research Projects/Julia BetaDiv")
+```
+
+### Updated diversity statistics for Julia
+
+Hey Julia, thanks for being patient as it's taken me a while to get back to you. This is the most recent version of the D-val table, with some additional figures and analysis that Valerie asked for. Most steps should be annotated - hope this can be followed.
+
+```{r, warning = FALSE, message = FALSE, echo = FALSE}
+
+# Loading packages
+library(JostDiv); library(tidyverse); library(testthat); library(lmPerm)
+
+# load data
+yeardata <- read.csv("Vernal_data_final.csv", stringsAsFactors=FALSE)
+yeardata$Year <- as.factor(yeardata$Year)
+
+# Removing bare ground as a value
+yeardata <- yeardata[, !(colnames(yeardata) == "BarGr")]
+
+# Adding weight vector to dataset
+com.weight <- rep(1/nrow(yeardata[yeardata$Year == "2017" &
+                                     yeardata$Grazing == "Grazed",]), 
+                  nrow(yeardata))
+
+# ID columns in the dataset (removed when performing analysis)
+idcols <- c(1:5)
+
+# Normalizes rows (changes to species frequencies, where all rows add to 1)
+norm_year <- cbind(yeardata[,idcols],
+                   com.weight,
+                   normalize_rows(yeardata[,-idcols]))
+
+# Error checking (all columns and rows should add to 1, weights should equal 1 for each treatment x year combination)
+expect_true(sum(colSums(norm_year[,-c(idcols, 6)])) == nrow(norm_year[,-c(idcols, 6)]))
+expect_true(sum(rowSums(norm_year[-c(idcols, 6)])) == nrow(norm_year[,-c(idcols, 6)]))
+expect_true(sum(norm_year$com.weight) == length(unique(norm_year$Year)) * 2)
+
+# Generating subsetted datasets by hierarchical level (by zone or by pool). 
+# This method allows the "weight" values to be scaled appropriately, where weights at each hierarchical level add to 1
+
+# Sums community values by zone to get the average zone community within each pool
+by.zone <- norm_year %>% 
+  group_by(Site.ID, Zone, Grazing, Year) %>% 
+  summarise_if(is.numeric, sum)
+
+# Sums community values by pool to get the average pool community
+by.pool <- norm_year %>% 
+  group_by(Site.ID, Grazing, Year) %>% 
+  summarise_if(is.numeric, sum)
+
+# Sums community values by site to get the average site community
+by.site = norm_year %>% 
+  group_by(Grazing, Year) %>% 
+  summarise_if(is.numeric, sum)
+
+# Sums community values by site to get the average site community
+by.zone_all = norm_year %>% 
+  group_by(Grazing, Year, Zone) %>% 
+  summarise_if(is.numeric, sum)
+```
+
+### Parameters to change in notebook
+
+__These parameters control how tests are conducted__
+div.q : The hill diversity numbers that are used in this analysis (default is 0, 1, 2)
+n.sim : The number of simulations used in permutational ANOVA tests
+pool.id : The index positions of identifying columns in the pool dataset (sample and zone columns no longer used)
+zone.id : The index positions of identifying columns in the zone dataset (sample column no longer used)
+
+```{r}
+# !!! Parameters to change !!! #
+# !!! Don't touch anything else !!! #
+
+div.q <- c(0:2) # Hill number diversity values
+n.sim <- 9999 # Number of perumtations
+pool.id <- c(1:5) # ID columns for by pool datasets (Sample ID and zone are no longer relevant and are removed)
+zone.id <- c(1:6) # ID columns for by zone datasets (sample ID is no longer relevant and is removed)
+site.id <- c(1:4)
+```
+
+
+### Steps for analysis:
+
+1. Calculate diversity statistics for all hierarchical levels and values of Q:
+
+Lowest hierarchical level
+
+- Alpha (zone) - average community diversity of a "zone" sample (aggregation of 3 samples taken within each zone)
+
+- Beta (zone) - relationship between average pool diversity and average zone diversity
+
+- Alpha (pool) - average community diversity of a "pool" sample (aggregation of 3 zone samples taken within each pool)
+
+- Beta (pool) - relationship between average pool diversity and average site diversity
+
+- Gamma (site) - all species found within a site (aggregation of all pool samples taken)
+
+Highest hierarchical level
+
+2. Visualize these observed values:
+
+3. Run 2 types of permutation tests to determine statistical differences:
+
+- For hierachical levels that contain more than 1 observation per group (not $\beta_{pool}$ or $\gamma_{site}$), I run a permutational ANOVA test. This test calculates the F value for the observed data (ratio of total variance explained to residual error) for the observed set of data, then scrambles the labels some number of times and does the same, ultimately comparing the number of times that this observed value is greater than the randomized value.
+
+- For hierarchical levels that contain 1 observation per group ($\beta_{pool}$ or $\gamma_{site}$), I conducted a standard permutation test. This is similar to the permutational ANOVA, but instead of comparing F-values, it compares the observed value of the sample to a distribution generated by random permutations of the data.
+
+### Step 1: Calculate diversity statistics for all hierarchical levels and values of Q:
+
+This step is relatively simple. Here, I'm using the Jost diversity calculation function to get values of $\alpha_{zone}$, $\alpha_{pool}$, and $\gamma_{site}$. From these calculations, I then calculate beta diversity, which is the ratio between average alpha diversity and average gamma diversity. 
+
+These calculations form the fundamental basis for all subsequent tests of significance and cross-site comparisons. 
+
+```{r, warning=FALSE, message=FALSE}
+
+# Defining alpha-diversity calculation function:
+calc_alpha <- function(x, q, sample.weight){
+  return(d_calc(x, q = q, sample.weight)[[1]][[1]][1])
+}
+
+output <- list()
+zone_output <- list()
+
+for(qval in unique(div.q)){
+  
+  z.alpha = apply(X = normalize_rows(by.zone[,-zone.id]), 
+      FUN = calc_alpha,
+      MARGIN = 1,
+      q = qval,
+      sample.weight = 1)
+  
+  p.alpha = apply(X = normalize_rows(by.pool[,-pool.id]), 
+        FUN = calc_alpha,
+        MARGIN = 1,
+        q = qval,
+        sample.weight = 1)
+  
+  s.gamma = apply(X = normalize_rows(by.site[,-site.id]), 
+        FUN = calc_alpha,
+        MARGIN = 1,
+        q = qval,
+        sample.weight = 1)
+  
+  all_alpha = data.frame(div = c(z.alpha, p.alpha, s.gamma),
+                      level = factor(c(rep("zone", length(z.alpha)), rep("pool", length(p.alpha)), rep("site", length(s.gamma))),
+                                     levels = c("zone", "pool", "site")),
+                      zone_id = c(by.zone$Zone, rep("None", nrow(by.pool) + nrow(by.site))),
+                      pool_id = c(by.zone$Site.ID, by.pool$Site.ID, rep("None", nrow(by.site))),
+                      graz = c(by.zone$Grazing, by.pool$Grazing, by.site$Grazing),
+                      year = c(by.zone$Year, by.pool$Year, by.site$Year))
+  
+  all_alpha$stat = rep("alpha", nrow(all_alpha))
+  
+  # Calculating beta diversity values (gamma / alpha)
+  
+  mean_zone = all_alpha %>% filter(level == "zone") %>% group_by(year, pool_id) %>% summarise(meandiv = mean(div))
+  zone_beta = left_join(all_alpha %>% filter(level == "pool") %>% group_by(pool_id, year), mean_zone) %>% mutate(beta = div / meandiv)
+  
+  mean_pool = all_alpha %>% filter(level == "pool") %>% group_by(year) %>% summarise(meandiv = mean(div))
+  pool_beta = left_join(all_alpha %>% filter(level == "site") %>% group_by(year), mean_pool) %>% mutate(beta = div / meandiv)
+  
+  all_beta = data.frame(div = c(zone_beta$beta, pool_beta$beta),
+                        stat = rep("beta", nrow(zone_beta) + nrow(pool_beta)),
+                        level = factor(c(rep("zone", nrow(zone_beta)), rep("pool", nrow(pool_beta))),
+                                       levels = c("zone", "pool", "site")),
+                        zone_id = c(rep("None", nrow(by.pool) + nrow(by.site))),
+                        pool_id = c(by.pool$Site.ID, rep("None", nrow(by.site))),
+                        graz = c(by.pool$Grazing, by.site$Grazing),
+                        year = c(by.pool$Year, by.site$Year))
+  
+  # Combining into one master datasheet
+  div_hierarchy = bind_rows(all_alpha, all_beta)
+  div_hierarchy$q = rep(qval, nrow(div_hierarchy))
+  
+  output[qval + 1] = list(div_hierarchy)
+  
+  # Zone level diversity statistic comparison:
+  z.gamma = apply(X = normalize_rows(by.zone_all[,-c(1:5)]), 
+        FUN = calc_alpha,
+        MARGIN = 1,
+        q = qval,
+        sample.weight = 1)
+  
+  colnames(by.zone_all)[1:3] = c("graz", "year", "zone_id")
+  by.zone_all$year = as.numeric(by.zone_all$year)
+  
+  mean_zone = all_alpha %>% filter(level == "zone") %>% group_by(zone_id, year, graz) %>% summarise(alpha = mean(div))
+
+  alpha_zone = all_alpha %>% filter(level == "zone") %>% group_by(zone_id, year, graz)
+
+  zone_specific = left_join(cbind(by.zone_all[,c(1:5)], "gamma" = z.gamma), mean_zone) %>% 
+    mutate(beta = gamma / alpha)
+  
+  zone_specific = zone_specific %>% 
+    group_by(graz, year, zone_id) %>%
+    gather(key = "level", value = "div",
+           alpha, beta, gamma)
+  
+  zone_specific$q = rep(qval, nrow(zone_specific))
+  
+  zone_output[qval + 1] = list(zone_specific)
+
+  }
+
+head(output[[1]])
+head(zone_output[[1]])
+```
+
+### Step 2: Display this information graphically. 
+
+To confirm the results of this analysis + provide some visual diagnostics, I've plotted the diversity statistics for each hierarchical level, colored by grazed-ungrazed, and with different point shapes for the different zones (where applicable). Grazing, in almost every case, increases alpha and gamma diversity. Each column refers to a unique year (1, 2, and 3 and 2015, 2016, and 2017, respectively)
+
+It's clear that the zones are different from one another, but I don't know if it's enough to dampen any changes, as Valerie was curious about. More detail below.
+
+```{r}
+output[[1]] %>% filter(stat == "alpha") %>%
+  ggplot(aes(x = level,
+             y = div,
+             color = graz,
+             shape = zone_id))+
+  geom_jitter(height = 0, width = .2) +
+  facet_wrap(~ year) + 
+  ggtitle("Diversity at Q = 0")
+```
+
+```{r}
+output[[2]] %>% filter(stat == "alpha") %>%
+  ggplot(aes(x = level,
+             y = div,
+             color = graz,
+             shape = zone_id))+
+  geom_jitter(height = 0, width = .2) +
+  facet_wrap(~ year) + 
+  ggtitle("Diversity at Q = 1")
+```
+
+```{r}
+output[[3]] %>% filter(stat == "alpha") %>%
+  ggplot(aes(x = level,
+             y = div,
+             color = graz,
+             shape = zone_id))+
+  geom_jitter(height = 0, width = .2) +
+  facet_wrap(~ year) + 
+  ggtitle("Diversity at Q = 2")
+```
+
+### Diversity of the Individual Zones
+
+To help address Valerie's questions, I've also plotted the alpha and gamma diversity of the zones, if we compare the average diversity of each sample, relative to the total diversity of zone samples in the site. You miss out on the nice hierarchical comparison in this way, as you can't aggregate to pools without losing influence of the specific zones, but they are different from one another. However, I don't really know if you see evidence of a "dampened effect"
+
+__Here's the raw data for the zones:__
+
+```{r}
+spread(select(bind_rows(zone_output), -com.weight), key = graz, value = div)
+```
+
+Plotting these zone diversity values:
+
+```{r}
+zone_output[[1]] %>% 
+  filter(level != "beta") %>%
+  ggplot(aes(x = level,
+             y = div,
+             color = graz,
+             shape = zone_id))+
+  geom_point() +
+  facet_grid(zone_id ~ year) + 
+  ggtitle("Zone Diversity at Q = 0")
+```
+
+```{r}
+zone_output[[2]] %>% 
+  filter(level != "beta") %>%
+  ggplot(aes(x = level,
+             y = div,
+             color = graz,
+             shape = zone_id))+
+  geom_point() +
+  facet_grid(zone_id ~ year) + 
+  ggtitle("Zone Diversity at Q = 1")
+```
+
+```{r}
+zone_output[[3]] %>% 
+  filter(level != "beta") %>%
+  ggplot(aes(x = level,
+             y = div,
+             color = graz,
+             shape = zone_id))+
+  geom_point() +
+  facet_grid(zone_id ~ year) + 
+  ggtitle("Zone Diversity at Q = 2")
+```
+
+# Significance Testing:
+
+To conduct significance testing, I will be performing two separate nonparemetric tests (described above):
+
+- Permutation F-test (permutation ANOVA)
+- Standard permutation test
+
+The first involves a function in the lmPerm library, while the second is a more complicated custom function that randomizes treatment labels (grazed/ungrazed) within a year, and calculates the difference in diversity. The fraction of observations that have an absolute difference greater than the observed difference are used to calculate P-values.
+
+### Permutation F-Test
+
+```{r, warning=FALSE, message=FALSE}
+# Permutation-based testing:
+
+library(lmPerm)
+
+permFTest = function(df){
+  
+  # Conducts permutation F-test
+  mod_output = aovp(div ~ graz, data = df, maxIter = n.sim)
+  
+  # Finds p-value
+  p_val = c(summary(mod_output)[[1]]$"Pr(Prob)"[1])
+  
+  # Returns p_value
+  return(data.frame(p_val))
+  
+}
+
+# Binds all dataframes together
+permF_output = bind_rows(output) %>% 
+  
+  # Filters to exclude all site-level comparisons
+  filter(level != "Site") %>% 
+  
+  # Groups by relevant columns (level, year, statistic, and q-value)
+  group_by(level, year, stat, q) %>%
+  
+  # Returns a dataframe of p-values
+  do(permFTest(.))
+
+head(permF_output)
+```
+
+### Permutation Test (Warning - takes a long time to run!)
+
+```{r}
+div.permtest <- function(
+  comdat, # Community data
+  idcols, # ID columns of community data
+  testcol, # Groups to test between
+  qval, # Q-value
+  n.perm, # Number of permutations (>1000 recommended)
+  tails = "two", # Number of tails (can be one or two, two is default)
+  direction = NA # Direction of the test, if one tailed
+  ){
+  
+  # Sets label factor vector
+  lab <- as.factor(comdat[,idcols][,colnames(comdat[,idcols]) == testcol])
+  
+  # Calculates alpha, beta, and gamma diversity values for each group
+  grp.1.val <- unlist(jost_d(comdat[lab == levels(lab)[1],-idcols], 
+                             q = qval, boot = FALSE)@summary[[1]])[1:3]
+  grp.2.val <- unlist(jost_d(comdat[lab == levels(lab)[2],-idcols], 
+                             q = qval, boot = FALSE)@summary[[1]])[1:3]
+  
+  # Establishes difference in values
+  obs.diff <- grp.1.val - grp.2.val
+  
+  # Creating storage list for permutation test output
+  perm.output <- list()
+  
+  for( perm in 1:n.perm){
+    
+    # Reshuffle label column at random
+    permlab <- base::sample(lab, length(lab), replace = F)
+
+    # Recalculates value based on permutation
+    perm.1.val <- unlist(jost_d(comdat[permlab == levels(permlab)[1],-idcols], 
+                                q = qval, boot = FALSE)@summary[[1]])[1:3]
+    perm.2.val <- unlist(jost_d(comdat[permlab == levels(permlab)[2],-idcols], 
+                                q = qval, boot = FALSE)@summary[[1]])[1:3]
+    perm.diff <- perm.1.val - perm.2.val
+    
+    # Stores difference in value
+    perm.output[[perm]] <- perm.diff[1:3]
+    
+  }
+  
+  # Unlists perm.output and creates dataframe
+  sim.vals <- matrix(unlist(perm.output), ncol = 3, byrow = T)
+  colnames(sim.vals) <- c("alpha", "beta", "gamma")
+  
+  # Significance testing
+  div.signif <- c()
+  
+  for(divlevel in 1:3){
+    if(tails == "two"){
+      div.signif[divlevel] <-  (sum(abs(sim.vals[,divlevel]) >= abs(obs.diff[divlevel])) + 1) / (n.perm + 1) 
+    }else if(tails == "one"){
+      if(direction == "postiive"){
+        div.signif[divlevel] <-  sum(sim.vals[,divlevel] >= obs.diff[divlevel]) / n.perm 
+      }else if(direction == "negative"){
+        div.signif[divlevel] <- sum(sim.vals[,divlevel] <= obs.diff[divlevel]) / n.perm 
+      }else{
+        stop("'direction' must be 'positive' or 'negative")
+      }
+    }else{
+      stop("'tails' value must be 'one' or 'two'")
+    }
+  }
+  
+  # Assembling output dataframe
+  fnctn.output <- list(obs.diff = list(obs.diff[1:3],
+                                       div.signif),
+                       obs.vals = list(grp.1.val,
+                                       grp.2.val),
+                       sim.vals = sim.vals)
+  names(fnctn.output$obs.diff) = c("vals", "signif")
+  names(fnctn.output$obs.vals) = c(levels(lab)[1], levels(lab)[2])
+  
+  return(fnctn.output)
+  
+}
+
+pool.sig <- list()
+counter <- 1
+idcols <- pool.id
+  
+for(qval in unique(div.q)){
+  
+  for(years in unique(by.pool$Year)){
+    
+    # Significance testing
+    tempdf <- by.pool %>% filter(Year == years)
+    
+    permtest.output <- div.permtest(comdat = data.frame(tempdf),
+                                    idcols,
+                                    testcol = "Grazing",
+                                    qval = qval,
+                                    n.perm = n.sim)
+    
+    pool.sig[counter] <- list(data.frame(stat = c("alpha", "beta", "gamma"),
+                                    q = rep(qval, 3),
+                                    level = rep("pool", 3),
+                                    year = rep(as.numeric(years) - 2014, 3),
+                                    p_val = permtest.output$obs.diff$signif))
+    
+    counter = counter + 1
+    
+  }
+}
+```
+
+# Merging all diversity values and statistics into a single dataframe
+
+Hopefully this is a little more simple + readable - may be a way to consider formatting your table for the paper?
+
+```{r}
+# Binds significance tables together and standardizes naming convention
+sig_all = bind_rows(permF_output,
+                    bind_rows(pool.sig) %>% filter(stat != "alpha")) %>%
+  ungroup() %>%
+  mutate(level = replace(level, level == "pool" & stat == "gamma", "site"))
+
+# Binds everything together in a more readable format
+full_table = bind_rows(output) %>% 
+  mutate(stat = replace(stat, stat == "alpha" & level == "site", "gamma")) %>% 
+  group_by(level, year, stat, q, graz) %>%
+  summarise(div = mean(div)) %>%
+  spread(key = graz, value = div) %>%
+  left_join(sig_all)
+
+write.csv(x = full_table, "full_div_output.csv")
+```
+

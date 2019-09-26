@@ -1,0 +1,309 @@
+---
+title: "R Notebook"
+output:
+  html_document:
+    df_print: paged
+---
+
+# Reading in datasets and loading packages:
+
+```{r, warning=FALSE, message=FALSE}
+# Loading packages
+library("ggplot2")
+install.packages("vegan")
+library('vegan')
+library('dplyr')
+install.packages("tidyr"); library("tidyr")
+install.packages('ggrepel'); library('ggrepel')
+# Setting working directory
+setwd("C:/Users/Julia Michaels/Google Drive/Dissertation Chapter 1/Paper 1 draft 6-14-2018/Analyses/")
+
+# load data
+data<-read.csv("Vernal_data_final.csv", stringsAsFactors=FALSE)
+data$Year<-as.factor(data$Year)
+
+# Remove bare ground
+data <- data %>%
+  dplyr::select(-(BarGr))
+
+#calculate total cover
+total_cover<-data %>%
+  dplyr::select(-(Site.ID:Year))%>%
+  summarise_all(funs(sum))
+
+total_cover<-gather(total_cover, "Species", "Cover")
+total_cover<-as.data.frame(total_cover)
+
+
+
+
+# Group by zone
+by.zone <- data %>% 
+  group_by(Site.ID, Grazing, Year, Zone) %>% 
+  summarise_if(is.numeric, mean)
+
+# Group by pool
+by.pool <- data %>% 
+  group_by(Site.ID, Grazing, Year) %>% 
+  summarise_if(is.numeric, mean)
+```
+
+__Visualization__
+
+# NMDS Plot of Zones:
+
+```{r}
+
+# What level do we want to plot?
+data_adonis = by.zone
+
+# Creating a new variable of both zone and grazing
+data_adonis$GrazingZone = paste(data_adonis$Grazing, data_adonis$Zone)
+
+# Runs NMDS with 2 dimensions
+nmds_run = metaMDS(data_adonis[,6:(ncol(data_adonis) - 1)],
+               try = 50,
+               trymax = 100,
+               trace = FALSE,
+               distance = "bray",
+               wascores = TRUE
+               )
+
+# Sets the group variable to factor
+data_adonis$group = as.factor(data_adonis$GrazingZone)
+
+# Adds group column to dataframe of NMDS points
+NMDS = bind_cols(data.frame(nmds_run$points), group = as.factor(c(data_adonis$group)))
+
+# Calculates the midpoint of each group
+NMDS.mean=aggregate(NMDS[,1:2], list(group=NMDS$group),mean)
+
+# Calculating the shape of the ellipses
+veganCovEllipse<-function (cov, center = c(0, 0), scale = 1, npoints = 100){
+    theta <- (0:npoints) * 2 * pi/npoints
+    Circle <- cbind(cos(theta), sin(theta))
+    t(center + scale * t(Circle %*% chol(cov)))
+}
+
+# Creating blank dataframe to store ellipses
+df_ell <- data.frame()
+for(g in levels(NMDS$group)){
+  df_ell <- rbind(df_ell, cbind(as.data.frame(with(NMDS[NMDS$group==g,],
+                  veganCovEllipse(cov.wt(cbind(MDS1,MDS2),
+                                          wt=rep(1/length(MDS1),length(MDS1)))$cov,
+                                  center=c(mean(MDS1),mean(MDS2)))))
+                  ,group=g))
+}
+
+# Adding other details for facetting
+NMDS = right_join(NMDS, bind_cols(group = as.character(as.numeric(data_adonis$group)), data_adonis[,2:4]),
+                      by = "group")
+
+NMDS.mean = inner_join(NMDS.mean, bind_cols(group = as.character(as.numeric(data_adonis$group)), data_adonis[,2:4]),
+                      by = "group")
+NMDS.mean = NMDS.mean[!duplicated(NMDS.mean[,2:5]),]
+
+df_ell = right_join(df_ell, bind_cols(group = as.character(as.numeric(data_adonis$group)), data_adonis[,2:4]),
+                      by = "group")
+```
+
+Creating dataframe of species scores to use in plotting vectors:   
+
+Variables here are:  
+
+* MDS1 (Axis 1 score)
+* MDS2 (Axis 2 score)
+* Spec (species name)
+* dist (total distance from the center)
+* rank (ranking based on distance)
+*cover (ranking based on total cover at the site over all 3 years)
+
+```{r}
+for_scores <-  data_adonis[,6:(ncol(data_adonis) - 2)]
+for_scores <- for_scores[,colSums(for_scores) / nrow(for_scores) > 2]
+
+NMDS.spec = data.frame(nmds_run$species)
+NMDS.spec$spec = rownames(NMDS.spec)
+NMDS.spec$dist = apply(NMDS.spec[,1:2], 1, function(x) as.numeric(sqrt(sum(x^2))))
+NMDS.spec$rank = rank(-NMDS.spec$dist)
+NMDS.spec$cover=rank(-total_cover$Cover)
+
+
+# Dataframe of species scores
+NMDS.spec
+```
+
+Edit the parameters here to make the figure prettier:
+
+```{r}
+# How many species to keep?
+maxcover = 10
+maxrank=10
+
+# Producing figure
+
+dominants1<-ggplot(data = NMDS, aes(MDS1, MDS2)) + 
+  geom_point(aes(shape = Zone), color="grey") +
+  scale_shape(solid = FALSE) + 
+  geom_path(data = df_ell, aes(x=MDS1, y=MDS2, group = Zone, color=Zone), size=1, linetype=1, alpha = .5) +
+  geom_text(data = NMDS.mean, aes(label = NMDS.mean$Zone, fontface="bold")) + 
+  facet_wrap(~Grazing) +
+  #geom_segment(data = NMDS.spec[NMDS.spec$rank <= maxrank,], 
+  #             aes(x = 0, y = 0, xend = MDS1, yend = MDS2),
+  #                arrow = arrow(length = unit(0.03, "npc"))) + 
+  geom_text_repel(data = NMDS.spec[NMDS.spec$cover <= maxcover,], 
+               aes(x = MDS1, y = MDS2, label = spec), size=4, alpha=0.7) +
+  theme_bw()+ 
+  geom_text(data = data.frame(MDS1 = .95, MDS2 = -1.05, Grazing = "Ungrazed"), 
+            aes(label = paste("Stress:", round(nmds_run$stress, 2))),
+            fontface = "bold")
+
+dominants1
+
+```
+
+```{r}
+distance1<-ggplot(data = NMDS, aes(MDS1, MDS2)) + 
+  geom_point(aes(shape = Zone), color="grey") +
+  scale_shape(solid = FALSE) + 
+  geom_path(data = df_ell, aes(x=MDS1, y=MDS2, group = Zone), size=1, linetype=1, alpha = .5) +
+  geom_text(data = NMDS.mean, aes(label = NMDS.mean$Zone, fontface="bold"), color="#0066CC") + 
+  facet_wrap(~Grazing) +
+  #geom_segment(data = NMDS.spec[NMDS.spec$rank <= maxrank,], 
+  #             aes(x = 0, y = 0, xend = MDS1, yend = MDS2),
+  #                arrow = arrow(length = unit(0.03, "npc"))) + 
+  geom_text_repel(data = NMDS.spec[NMDS.spec$rank <= maxrank,], 
+  aes(x = MDS1, y = MDS2, label = spec), size=4, alpha=0.7) +
+  theme_bw()
+
+distance1
+  
+  
+  
+```
+
+
+Checking that this represents the default image well (red are species without labels):
+
+```{r}
+plot(nmds_run)
+```
+
+# NMDS plot for combined pools:
+
+```{r, warning=FALSE, message=FALSE}
+
+library("testthat")
+
+data_adonis = by.pool
+
+nmds_run = metaMDS(data_adonis[,5:ncol(data_adonis)],
+               try = 50,
+               trymax = 100,
+               trace = FALSE,
+               distance = "bray",
+               binary = TRUE,
+               wascores = TRUE
+               )
+
+data_adonis$group = as.factor(paste(data_adonis$Grazing))
+NMDS = bind_cols(data.frame(nmds_run$points), group = as.factor(c(data_adonis$group)))
+NMDS.mean=aggregate(NMDS[,1:2], list(group=NMDS$group),mean)
+
+# Calculating the shape of the ellipses
+veganCovEllipse<-function (cov, center = c(0, 0), scale = 1, npoints = 100){
+    theta <- (0:npoints) * 2 * pi/npoints
+    Circle <- cbind(cos(theta), sin(theta))
+    t(center + scale * t(Circle %*% chol(cov)))
+}
+
+df_ell <- data.frame()
+for(g in levels(NMDS$group)){
+  df_ell <- rbind(df_ell, cbind(as.data.frame(with(NMDS[NMDS$group==g,],
+                  veganCovEllipse(cov.wt(cbind(MDS1,MDS2),
+                                          wt=rep(1/length(MDS1),length(MDS1)))$cov,
+                                  center=c(mean(MDS1),mean(MDS2)))))
+                  ,group=g))
+}
+
+# Adding other details for facetting
+NMDS = right_join(NMDS, bind_cols(group = as.character(as.numeric(data_adonis$group)), data_adonis[,2:3]),
+                      by = "group")
+
+NMDS.mean = right_join(NMDS.mean, bind_cols(group = as.character(as.numeric(data_adonis$group)), data_adonis[,2:3]),
+                      by = "group")
+
+NMDS.mean = NMDS.mean[!duplicated(NMDS.mean[,2:5]),]
+
+NMDS.mean = NMDS.mean[order(NMDS.mean$Year),]
+
+df_ell = right_join(df_ell, bind_cols(group = as.character(as.numeric(data_adonis$group)), data_adonis[,2:3]),
+                      by = "group")
+```
+
+Creating dataframe of species scores to use in plotting vectors:
+
+```{r}
+for_scores <-  data_adonis[,5:ncol(data_adonis) - 1]
+for_scores <- for_scores[,colSums(for_scores) / nrow(for_scores) > 5]
+NMDS.spec = data.frame(nmds_run$species)
+NMDS.spec$spec = rownames(NMDS.spec)
+NMDS.spec$dist = apply(NMDS.spec[,1:2], 1, function(x) as.numeric(sqrt(sum(x^2))))
+NMDS.spec$rank = rank(-NMDS.spec$dist)
+NMDS.spec$cover=rank(-total_cover$Cover)
+NMDS.spec
+```
+
+Edit the parameters here to make the figure prettier:
+
+```{r}
+# How many species to plot?
+maxcover = 10
+maxrank= 10
+
+# Producing figure
+dominants2<-ggplot(data = NMDS, aes(MDS1, MDS2)) + 
+  geom_point(alpha=0.05, aes(shape = Grazing)) +
+  scale_shape(solid = TRUE) + 
+  geom_path(data = df_ell, aes(x=MDS1, y=MDS2, group = Grazing), size=1, linetype=1) +
+  geom_text(data = NMDS.mean, aes(label = NMDS.mean$Grazing, fontface="bold")) +
+  theme_bw() +
+  #xlim(-2, 2)+
+  #ylim(-.6,.5)+
+  theme(strip.text = element_text(size=15), legend.title = element_text(size=15), legend.text = element_text(size=10))+
+  # facet_wrap(~Year) +
+  #geom_segment(data = NMDS.spec[NMDS.spec$rank <= maxrank,], 
+  #             aes(x = 0, y = 0, xend = MDS1, yend = MDS2),
+  #                arrow = arrow(length = unit(0.03, "npc"))) + 
+  geom_text_repel(data = NMDS.spec[NMDS.spec$cover <= maxcover,], 
+               aes(x = MDS1, y = MDS2, label = spec), size=4, alpha=0.45)+
+    geom_text(data = data.frame(MDS1 = 0.5, MDS2 = -0.6, Year = 2017), 
+            aes(label = paste("Stress:", round(nmds_run$stress, 2))),
+            fontface = "bold")
+dominants2
+```
+
+```{r}
+distance2<-ggplot(data = NMDS, aes(MDS1, MDS2)) + 
+  geom_point(alpha=0.05, aes(shape = Grazing)) +
+  scale_shape(solid = TRUE) + 
+  geom_path(data = df_ell, aes(x=MDS1, y=MDS2, group = Grazing), size=1, linetype=1) +
+  geom_text(data = NMDS.mean, aes(label = NMDS.mean$Grazing, fontface="bold"),color="#0066CC") +
+  theme_bw() +
+  #xlim(-2, 2)+
+  #ylim(-.6,.5)+
+  theme(strip.text = element_text(size=15), legend.title = element_text(size=15), legend.text = element_text(size=10))+
+  facet_wrap(~Year) +
+  #geom_segment(data = NMDS.spec[NMDS.spec$rank <= maxrank,], 
+  #             aes(x = 0, y = 0, xend = MDS1, yend = MDS2),
+  #                arrow = arrow(length = unit(0.03, "npc"))) + 
+  geom_text_repel(data = NMDS.spec[NMDS.spec$rank <= maxrank,], 
+               aes(x = MDS1, y = MDS2, label = spec), size=4, alpha=0.45)
+distance2
+```
+
+Checking that this represents the default image well (red are species without labels):
+
+```{r}
+plot(nmds_run)
+```

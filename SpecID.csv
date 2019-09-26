@@ -1,0 +1,66 @@
+Species,Status,Status,SpeciesIDCode
+Aira caryophella,Exotic,Grass,AirCa
+Avena fatua,Exotic,Grass,AveFa
+Briza minor  ,Exotic,Grass,BriMi
+Brodiaea minor,Native,Forb,BroMi
+Bromus diandrus,Exotic,Grass,BroDi
+Cotula coronopifolia,Exotic,Forb,CotCo
+Elymus caput-medusae  ,Exotic,Grass,ElyCa
+Erodium botrys,Exotic,Forb,EroBo
+Festuca bromoides,Exotic,Grass,FesBr
+Festuca perennis,Exotic,Grass,FesPe
+Geranium dissectum,Exotic,Forb,GerDi
+Glyceria declinata,Exotic,Grass,GlyDe
+Hordeum marinum,Exotic,Grass,HorMa
+Hypochaeris radicata,Exotic,Forb,HypRa
+Juncus capitatus,Exotic,Rush,JunCa
+Leontodon saxatilis,Exotic,Forb,LeoSa
+Lythrum hyssopifolia,Exotic,Forb,LytHy
+Trifolium dubium,Exotic,Forb,TriDu
+"Trifolium hirtum
+",Exotic,Forb,TriHi
+Trifolium repens,Exotic,Forb,TriRe
+Rumex crispus,Exotic,Forb,RumCr
+Acmispon americanus,Native,Forb,AcmAm
+Aloepecurus saccatus,Native,Grass,AloSa
+Blennosperma nanum  ,Native,Forb,BleNa
+Brodieae elegans,Native,Forb,BroEl
+Bromus hordeaceous,Native,Forb,BroHo
+Castilleja attenuata,Native,Forb,CasAt
+Castilleja campestris  ,Native,Forb,CasCa
+Centromadia spp.,Native,Forb,CenFi
+Chlorogalum Pomeridianum,Native,Forb,ChlPo
+Cicendia quadrangularis,Native,Forb,CicQu
+Croton setigerus,Native,Forb,CroSe
+Deschampsia danthanoides,Native,Grass,DesDa
+Downingia bicornuta,Native,Forb,DowBi
+Downingia cuspidata,Native,Forb,DowCu
+Downingia ornatissima ,Native,Forb,DowOr
+Eleocharis acicularis  ,Native,Grass,EleAc
+Eryngium castrense  ,Native,Forb,EryCa
+Eschscholzia lobii,Native,Forb,EscLo
+Gratiola ebracteata  ,Native,Forb,GraEb
+Holocarpha virgata,Native,Forb,HolVir
+Juncus balticus,Native,Rush,JunBa
+Juncus bufonius,Native,Rush,JunBu
+Juncus patens,Native,Rush,JunPa
+Lasthenia fremontii,Native,Forb,LasFr
+Lasthenia glaberrima,Native,Forb,LasGl
+Layia fremontii,Native,Forb,LayFr
+Lupinus bicolor,Native,Forb,LupBi
+Navarretia leucocephala  ,Native,Forb,NavLe
+Navarretia Mersii,Native,Forb,NavMe
+Pilularia americana,Native,Fern,PilAm
+Plagiobothrys stipitatus,Native,Forb,PlaSt
+Plagiobothrys greeneii,Native,Forb,PlaGr
+Pogogyne zizyphoroides  ,Native,Forb,PogZi
+Psilocarphus brevissimus,Native,Forb,PsiBr
+Ranunculus bonariensis ,Native,Forb,RanBo
+Trifolium bifidium,Native,Forb,TriBi
+Trifolium depauperatum,Native,Forb,TriDe
+Trifolium hirtum,Native,Forb,TriEr
+Triphysaria eriantha,Native,Forb,TriHy
+Triteleia hyacinthina,Native,Forb,TriLa
+Triteleia laxa,Native,Forb,TriLa
+Trifolium variegatum,Native,Forb,TriVa
+Eleocharis macrostachya  ,Native,Grass,EleMa

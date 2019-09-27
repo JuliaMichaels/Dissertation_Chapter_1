@@ -12,6 +12,31 @@ specid<-read.csv("SpecID.csv", stringsAsFactors=FALSE)
 centroids<-read.csv("Pool Centroids.csv")
 specid<-read.csv('SpecID.csv')
 dvals<-read.csv("full_div_output.csv")
+precip<-read.csv('monthly_precipitation.csv')
+
+library('dplyr');library('tidyr')
+# calculate average precip ------------------------------------------------
+
+precip_by_year<-precip %>% separate(Month.Year, 
+                                c("Month","Year")) 
+precip_by_year<-precip_by_year[-c(1:6),]
+
+
+precip_by_year_avg<-precip_by_year %>% mutate(year_index = 1:nrow(precip_by_year) %/% 12)%>%
+  group_by(year_index) %>%
+  summarise(yearly_average = sum(Total.Precip..mm.))
+#17 is 2014-15
+#18 is 2015-16
+#19 is 2016-17
+precip_by_year_avg<-precip_by_year_avg[-c(22:23),]
+total_avg<-mean(precip_by_year_avg$yearly_average, na.rm=TRUE)
+Year201415<-precip_by_year_avg[17,]
+Year201415_per_of_avg<-Year201415/total_avg
+
+#% of average 2014-15
+
+
+#537.2864 mm avg from 1997-2018
 
 
 # Mantel Test -------------------------------------------------------------

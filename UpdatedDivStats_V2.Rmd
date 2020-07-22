@@ -11,9 +11,9 @@ require("knitr")
 #opts_knit$set(root.dir = "C:/Users/evan/Box Sync/Eviner lab shared/Evan/Research Projects/Julia BetaDiv")
 ```
 
-### Updated diversity statistics for Julia
+### diversity statistics 
 
-Hey Julia, thanks for being patient as it's taken me a while to get back to you. This is the most recent version of the D-val table, with some additional figures and analysis that Valerie asked for. Most steps should be annotated - hope this can be followed.
+
 
 ```{r, warning = FALSE, message = FALSE, echo = FALSE}
 
